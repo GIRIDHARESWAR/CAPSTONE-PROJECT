@@ -1,0 +1,37 @@
+#include <Wire.h> 
+#include <LiquidCrystal_I2C.h>
+LiquidCrystal_I2C lcd(0x27,16,2);
+
+#include <DHT.h>
+#define DHTPIN 3 //Sensor Pin
+#define DHTTYPE DHT11
+DHT dht(DHTPIN, DHTTYPE);
+
+int buzled = 2;
+ 
+void setup()
+{
+
+  Serial.begin(9600); // initialize serial communication at 115200 bits per second:
+  dht.begin();
+  lcd.init();
+  lcd.backlight();
+pinMode(buzled,OUTPUT); 
+}
+
+void loop()
+{
+    float h = dht.readHumidity();
+    float f = dht.readTemperature(); 
+    String state = String((float)f)+" C"+"|"+String((float)h)+" %";
+    Serial.println(state);
+    lcd.setCursor(0,0);
+    lcd.print(state);
+ if(f>36)
+ {
+  digitalWrite(buzled,1);
+  }
+  else
+  {
+      digitalWrite(buzled,0);
+    }
