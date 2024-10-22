@@ -1,0 +1,46 @@
+pip install numpy pandas scikit-learn
+import numpy as np
+import pandas as pd
+from sklearn.model_selection import train_test_split
+from sklearn.ensemble import RandomForestClassifier
+from sklearn.metrics import accuracy_score, classification_report, confusion_matrix
+# Load your dataset (replace 'your_dataset.csv' with the actual file path)
+data = pd.read_csv('your_dataset.csv')
+
+# Assume the target column is 'Component_Failure', and the other columns are sensor data
+X = data.drop('Component_Failure', axis=1)  # Features (sensor data)
+y = data['Component_Failure']  # Target variable (failure status)
+
+# Split the dataset into training and testing sets (80% training, 20% testing)
+X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
+# Create a Random Forest Classifier
+rf_model = RandomForestClassifier(n_estimators=100, random_state=42)
+
+# Train the model
+rf_model.fit(X_train, y_train)
+# Make predictions on the test set
+y_pred = rf_model.predict(X_test)
+# Evaluate accuracy
+accuracy = accuracy_score(y_test, y_pred)
+print(f'Accuracy: {accuracy * 100:.2f}%')
+
+# Detailed classification report (precision, recall, F1-score)
+print("Classification Report:\n", classification_report(y_test, y_pred))
+
+# Confusion Matrix
+print("Confusion Matrix:\n", confusion_matrix(y_test, y_pred))
+# Get feature importance
+feature_importances = rf_model.feature_importances_
+
+# Print feature importance for each sensor data feature
+for feature, importance in zip(X.columns, feature_importances):
+    print(f'{feature}: {importance:.4f}')
+import pickle
+
+# Save the model to disk
+with open('random_forest_model.pkl', 'wb') as f:
+    pickle.dump(rf_model, f)
+
+# Later, you can load the model like this:
+# with open('random_forest_model.pkl', 'rb') as f:
+#     loaded_model = pickle.load(f)
