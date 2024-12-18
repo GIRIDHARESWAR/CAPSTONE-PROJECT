@@ -1,0 +1,593 @@
+%%capture
+!pip install google-generativeai
+!pip install gradio
+!pip install joblib
+# gradio is a package used to design the interface for ML models
+# Alll imports:
+import pandas as pd
+import numpy as np
+import seaborn as sns
+import matplotlib.pyplot as plt
+from sklearn.model_selection import train_test_split
+from sklearn.preprocessing import StandardScaler
+import google.generativeai as genai
+import os
+# engine is 700 -1000
+# lub is  2 -5
+# but ML nees all data in  0 -1 range only, so to convert engine, lub etcc from 700-100to 0-1, so we use standaradscaler
+from sklearn.metrics import accuracy_score, confusion_matrix, classification_report
+
+df=pd.read_csv("https://docs.google.com/spreadsheets/d/e/2PACX-1vSaZmn8fABJFp5G9LP-EtK0kfqaJrPNM1Oob6yJe9RffbukZmUEoGKsmXVvZdXKeCnzSDQnIOlbWu0O/pub?gid=0&single=true&output=csv")
+
+df.head()
+
+df.tail()
+
+df.isna()
+# Check any NA values and if its there, replace the NA values with the median value:
+df.fillna(df.median(), inplace=True)
+
+# Check for outliers(very big data points)
+Q1 = df.quantile(0.25)
+Q3 = df.quantile(0.75)
+IQR = Q3 - Q1
+df = df[~((df < (Q1 - 1.5 * IQR)) | (df > (Q3 + 1.5 * IQR))).any(axis=1)]
+
+df.info()
+
+df.describe()
+
+df['Engine Condition'].value_counts()
+
+import plotly.express as px
+
+fig = px.pie(df, names='Engine Condition', title='Engine Condition Distribution')
+fig.show()
+
+# Correlation
+df.corr()
+
+correlation_matrix = df.corr()
+sns.heatmap(correlation_matrix, annot=True, cmap='coolwarm')
+plt.title("Feature Correlation Heatmap")
+plt.show()
+
+r=4
+c=2
+it=1
+for i in ['Engine rpm', 'Lub oil pressure', 'Fuel pressure', 'Coolant pressure',
+       'lub oil temp', 'Coolant temp']:
+               plt.subplot(r,c,it)
+               sns.barplot(x='Engine Condition',y=i,data=df)
+               plt.grid()
+               it+=1
+plt.tight_layout()
+plt.show()
+
+# Correlation and Coefficient Analysis
+# This is used to find the accuracy of realtionship between each feature(column) and the Target(independent Variable)
+target = 'Engine Condition'
+features = df.drop(columns=[target]).columns
+
+# coefficient analysis will check what will be the accuracy for only one feature to the independent variable -- important
+coeff_analysis = df.corr()[target]
+print("Correlation of features with target:")
+print(coeff_analysis)
+
+# from the above, we can see that Fuel pressure is the importatn feature to consider for engine conditon
+
+import matplotlib.pyplot as plt
+import seaborn as sns
+import pandas as pd
+
+target = 'Engine Condition'
+features = df.drop(columns=[target]).columns
+print(df.columns)
+
+# Calculate the correlation of features with the target
+coeff_analysis = df.corr()[target]
+coeff_analysis = coeff_analysis.drop(target)
+
+# Print the correlation of each feature with the target
+print("Correlation of features with target:")
+print(coeff_analysis)
+
+print("\nAccuracy of each feature with target (in %):")
+for feature, corr in coeff_analysis.items():
+    print(f"{feature}: {corr*100:.2f}%")
+
+n_cols = 3
+n_rows = (len(features) + n_cols - 1) // n_cols
+
+plt.figure(figsize=(15, 5 * n_rows))
+for i, feature in enumerate(features, 1):
+    plt.subplot(n_rows, n_cols, i)
+    sns.boxplot(x=target, y=feature, data=df)
+    plt.title(f"{feature} vs {target}")
+    plt.tight_layout()
+
+plt.show()
+
+import os
+import pandas as pd
+from sklearn.model_selection import train_test_split
+from sklearn.preprocessing import StandardScaler
+from sklearn.linear_model import LogisticRegression
+from sklearn.ensemble import RandomForestClassifier
+from sklearn.tree import DecisionTreeClassifier
+from sklearn.svm import SVC
+from sklearn.metrics import accuracy_score, roc_auc_score, confusion_matrix, classification_report
+import joblib
+
+# Assume df is your DataFrame containing the data
+# Splitting Data
+X = df.drop(columns=['Engine Condition'])
+y = df['Engine Condition']
+X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.3, random_state=42)
+
+# Scaling Features
+scaler = StandardScaler()
+X_train = scaler.fit_transform(X_train)  # Fit and transform on training data
+X_test = scaler.transform(X_test)  # Transform test data
+
+# Create the 'models' directory if it doesn't exist
+os.makedirs('models', exist_ok=True)
+
+# Define the path to save the scaler
+scaler_path = "models/scaler.pkl"
+
+# Save the fitted scaler to the file
+joblib.dump(scaler, scaler_path)
+print(f"Scaler saved to {scaler_path}")
+
+# Model Import and Initialization
+models = {
+    "Logistic Regression": LogisticRegression(),
+    "Decision Tree": DecisionTreeClassifier(),
+    "Random Forest": RandomForestClassifier(),
+    "SVM": SVC(probability=True)
+}
+
+# Model Training and Evaluation
+results = []# Threshold Calculation
+thresholds = {}
+for feature in features:
+    thresholds[feature] = df[feature].mean() + 2 * df[feature].std()
+    # we find the mean of each feature and we will multiply with the standard deviation of each feature
+    # sd = mean - (mean)^2/avg of mean
+
+# Predict Days to Failure
+# we will take the threshold calculation for each feature  and to find the numebr of days of failure we will reducet the feature datapoint subtracted by threshhold
+# and then we will take the maximum count or maximum value of days.
+def days_to_failure(row):
+    feature_scores = {feature: row[feature] - thresholds[feature] for feature in features}
+    failure_score = max(feature_scores.values())  # Example: Adjust logic as per domain knowledge
+    return max(0, 100 - failure_score)  # Days till failure approx.
+
+df["Days to Failure"] = df.apply(days_to_failure, axis=1)
+print(df[["Days to Failure"]])
+
+
+# This number of days is NOT 100% accurate,
+# this is atleast 60% correct, we will do the pending in next review
+for model_name, model in models.items():
+    model.fit(X_train, y_train)
+    y_pred = model.predict(X_test)
+    acc = accuracy_score(y_test, y_pred)
+    roc_auc = roc_auc_score(y_test, model.predict_proba(X_test)[:, 1] if hasattr(model, "predict_proba") else y_pred)
+    cm = confusion_matrix(y_test, y_pred)
+
+    print(f"{model_name} Accuracy: {acc}")
+    print(f"{model_name} ROC AUC: {roc_auc}")
+    print(f"Confusion Matrix:\n{cm}")
+    print(classification_report(y_test, y_pred))
+
+    # Store results for comparison
+    results.append((model_name, acc, roc_auc))
+
+# Comparing Results
+results_df = pd.DataFrame(results, columns=["Model", "Accuracy", "ROC AUC"])
+print(results_df)
+
+# Accuracy
+# Accuracy Comparison
+results_df.plot(x="Model", y=["Accuracy", "ROC AUC"], kind="bar", figsize=(10, 6))
+plt.title("Model Performance Comparison")
+plt.ylabel("Score")
+plt.show()
+
+# Feature Threshold Analysis
+plt.figure(figsize=(10, 6))
+sns.barplot(x=list(thresholds.keys()), y=list(thresholds.values()))
+plt.title("Feature Thresholds")
+plt.xticks(rotation=45)
+plt.show()
+
+import joblib
+import os
+
+# Create a folder to store models if not exists
+os.makedirs("models", exist_ok=True)
+
+# Save each model
+for model_name, model in models.items():
+    model.fit(X_train, y_train)  # Train the model
+    joblib.dump(model, f"models/{model_name.replace(' ', '_')}.pkl")  # Save as .pkl
+    print(f"{model_name} saved as models/{model_name.replace(' ', '_')}.pkl")
+
+import gradio as gr
+import pandas as pd
+import joblib
+from sklearn.preprocessing import StandardScaler
+
+# Load pre-trained models and scaler
+models = {
+    "Logistic Regression": joblib.load("models/Logistic_Regression.pkl"),
+    "Decision Tree": joblib.load("models/Decision_Tree.pkl"),
+    "Random Forest": joblib.load("models/Random_Forest.pkl"),
+    "SVM": joblib.load("models/SVM.pkl"),
+}
+
+# Ensure the scaler file exists
+try:
+    scaler = joblib.load("models/scaler.pkl")
+except FileNotFoundError:
+    raise FileNotFoundError("Scaler file not found. Please ensure 'scaler.pkl' is saved in the 'models' folder.")
+
+# Set feature thresholds (now accuracy is 40%)
+thresholds = {
+    "Engine rpm": 950,
+    "Lub oil pressure": 3.5,
+    "Fuel pressure": 6,
+    "Coolant pressure": 2.5,
+    "lub oil temp": 77,
+    "Coolant temp": 80,
+}
+
+# Prediction MAIN function
+def predict_engine_health(*inputs):
+    # Map inputs to a dictionary array
+    inputs_dict = {feature: value for feature, value in zip(thresholds.keys(), inputs)}
+    input_df = pd.DataFrame([inputs_dict])
+
+    # Scale the input features
+    input_scaled = scaler.transform(input_df)
+
+    # Make predictions using all models
+    predictions = {}
+    health_count = 0  # Count models predicting HEALTHY
+    model_comparison = []  # Store model prediction results
+
+    for model_name, model in models.items():
+        # model will predict the inputs for healthy or failure in the below line
+        pred = model.predict(input_scaled)[0]
+        status = "HEALTHY" if pred == 1 else "FAIL"
+        predictions[model_name] = status
+        model_comparison.append({"Model": model_name, "Prediction": status})
+        if pred == 1:
+            health_count += 1
+
+    # Debug: Print predictions for each model
+    print("Model Predictions:", predictions)
+
+    # Determine overall status by majority voting
+    overall_status = "HEALTHY" if health_count > len(models) / 2 else "FAILURE"
+
+    # Threshold analysis
+    threshold_analysis = {}
+    for feature, value in inputs_dict.items():
+        deviation = value - thresholds[feature]
+        threshold_analysis[feature] = deviation
+
+    # Determine major reason for failure (if any)
+    max_deviation_feature = max(threshold_analysis, key=threshold_analysis.get)
+    max_deviation = threshold_analysis[max_deviation_feature]
+    days_to_failure = max(0, 100 - max_deviation)
+
+    # Generate results
+    major_reason = (
+        f"{max_deviation_feature} exceeds threshold by {max_deviation:.2f}"
+        if overall_status == "FAILURE"
+        else "N/A"
+    )
+    result = (
+        f"Overall Status: {overall_status}\n"
+        f"Major Reason for Failure: {major_reason}\n"
+        f"Estimated Days to Failure: {days_to_failure:.2f}\n"
+    )
+
+    # Create comparison table
+    comparison_df = pd.DataFrame(model_comparison)
+
+    # Return results and analysis table
+    analysis_df = pd.DataFrame({
+        "Feature": list(threshold_analysis.keys()),
+        "Deviation": list(threshold_analysis.values())
+    })
+    return result, analysis_df, comparison_df
+
+# Gradio Interface for DASHBOARD
+
+# Creating stylish range sliders with color and icons
+inputs = [
+    gr.Slider(minimum=thresholds[feature] - 10, maximum=thresholds[feature] + 10,
+              step=0.1, label=feature, value=thresholds[feature],
+              elem_id=feature, interactive=True) if thresholds[feature] < 10 else
+    gr.Number(value=thresholds[feature], label=feature, precision=2, elem_id=feature)
+    for feature in thresholds.keys()
+]
+
+outputs = [
+    gr.Textbox(label="Engine Health Prediction", interactive=False,
+              elem_id="result-box", lines=5,
+              placeholder="Prediction results will appear here",
+              info="This shows the health status of your engine."),
+    gr.Dataframe(label="Threshold Analysis", headers=["Feature", "Deviation"],
+                 elem_id="threshold-analysis"),
+    gr.Dataframe(label="Model Comparison", headers=["Model", "Prediction"],
+                 elem_id="model-comparison")
+]
+
+# Custom CSS for a colorful, professional look
+css = """
+    #result-box {
+        font-size: 16px;
+        font-weight: bold;
+        background: linear-gradient(135deg, #FF7F50, #FF6347);
+        color: white;
+        border: 2px solid #4CAF50;
+        padding: 10px;
+        border-radius: 10px;
+        box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+    }
+    #threshold-analysis {
+        border: 1px solid #ddd;
+        border-radius: 8px;
+        box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+        background-color: #FFFFFF;
+        max-height: 300px;
+        overflow-y: scroll;
+        background: linear-gradient(135deg, #FFEB3B, #FFC107);
+    }
+    #model-comparison {
+        border: 1px solid #ddd;
+        border-radius: 8px;
+        box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+        background-color: #FFFFFF;
+        max-height: 300px;
+        overflow-y: scroll;
+        background: linear-gradient(135deg, #66BB6A, #43A047);
+    }
+    .gradio-slider {
+        background-color: #E8F5E9;
+        border-radius: 8px;
+        border: 2px solid #66BB6A;
+    }
+    .gradio-slider:hover {
+        border-color: #43A047;
+    }
+    .gradio-input {
+        font-size: 14px;
+        color: #2C3E50;
+    }
+    .gradio-button {
+        background-color: #FF6347;
+        color: white;
+        font-weight: bold;
+        border-radius: 8px;
+        transition: background-color 0.3s ease;
+    }
+    .gradio-button:hover {
+        background-color: #FF4500;
+    }
+    .gradio-container {
+        font-family: "Arial", sans-serif;
+        background-color: #F4F4F9;
+        padding: 30px;
+        border-radius: 15px;
+        box-shadow: 0 6px 12px rgba(0, 0, 0, 0.1);
+    }
+    .gradio-header {
+        color: #673AB7;
+        font-size: 26px;
+        font-weight: bold;
+        text-align: center;
+    }
+    .gradio-textbox, .gradio-number {
+        background: linear-gradient(135deg, #FFEB3B, #FFC107);
+    }
+    .gradio-input gradio-slider {
+        transition: all 0.3s ease;
+    }
+    .gradio-textbox, .gradio-number {
+        border-radius: 8px;
+        padding: 15px;
+    }
+    .gradio-button {
+        font-size: 16px;
+        padding: 10px 20px;
+    }
+    .gradio-container:hover .gradio-button {
+        background-color: #FF4500;
+    }
+"""
+
+# Gradio Interface
+interface = gr.Interface(
+    fn=predict_engine_health,
+    inputs=inputs,
+    outputs=outputs,
+    title="Engine Health Prediction Dashboard",
+    description=(
+        "Welcome to the Engine Health Prediction Dashboard! "
+        "This tool will help you predict your engine's health status "
+        "based on various parameters and threshold analysis."
+    ),
+    theme="compact",  # Use compact theme for a cleaner layout
+    css=css,  # Apply custom CSS
+)
+
+# Launch the Gradio app
+interface.launch(debug=True)
+
+import gradio as gr
+import os
+import google.generativeai as genai
+
+# Set feature thresholds
+thresholds = {
+    "Engine rpm": 950,
+    "Lub oil pressure": 3.5,
+    "Fuel pressure": 6,
+    "Coolant pressure": 2.5,
+    "Lub oil temp": 77,
+    "Coolant temp": 80,
+}
+
+# Configure Gemini AI
+genai.configure(api_key="AIzaSyBhvAmaPZponhmv5p5WMctye7ue-aaAXSg")
+model = genai.GenerativeModel("gemini-1.5-pro")
+chat = model.start_chat(history=[])
+
+# Function to get response from Gemini AI
+def get_gemini_response(question):
+    response = chat.send_message(question, stream=True)
+    return [chunk.text for chunk in response]
+
+# Function to display inputs and get Gemini AI response
+def display_inputs(*inputs):
+    # Create a dictionary of inputs
+    inputs_dict = {feature: value for feature, value in zip(thresholds.keys(), inputs)}
+
+    # Create a formatted string for the inputs
+    input_text = "**Inputs**:\n"
+    for feature, value in inputs_dict.items():
+        input_text += f"- {feature}: {value}\n"
+
+    # Construct the prompt text based on the inputs
+
+    # Construct the prompt text based on the inputs, with more detailed instructions
+    prompt_text = f"""
+    You are an engine diagnostic expert. The inputs provided represent real-time engine health parameters:
+    {input_text}
+
+    Your task is to provide a detailed and structured diagnostic interpretation of the engine's current condition. Please follow these instructions:
+    1. Review the values for each of the engine health parameters.
+    2. Compare each parameter against its typical threshold (reference values are provided).
+    3. Identify any abnormal readings and explain their potential causes.
+    4. Provide recommendations for any issues detected, including potential repairs or preventive actions.
+
+    Ensure that your response includes:
+    - **Analysis of each parameter** (e.g., whether it is within normal ranges or exceeds thresholds).
+    - **Possible causes** for any abnormalities.
+    - **Recommended actions** for addressing any detected issues.
+
+    Your response should be formatted with clear headings, bullet points, and concise explanations.
+    """
+    response_chunks = get_gemini_response(prompt_text)
+    response_text = "".join(response_chunks)
+
+    # Return the input text for the textbox and the AI response in a structured manner
+    structured_output = f"""
+      **The Inputs were**:
+
+      **Inputs**:
+      {input_text}
+
+      ---
+
+      **AI Analysis**:
+
+      ## Engine Diagnostic Report
+
+      **Input Parameters**:
+
+      - **Engine rpm**: {inputs_dict["Engine rpm"]}
+      - **Lub oil pressure**: {inputs_dict["Lub oil pressure"]} (Units assumed to be bar or psi, please specify in future readings)
+      - **Fuel pressure**: {inputs_dict["Fuel pressure"]} (Units assumed to be bar or psi, please specify in future readings)
+      - **Coolant pressure**: {inputs_dict["Coolant pressure"]} (Units assumed to be bar or psi, please specify in future readings)
+      - **Lub oil temp**: {inputs_dict["Lub oil temp"]} °C
+      - **Coolant temp**: {inputs_dict["Coolant temp"]} °C
+
+      ---
+
+      **Reference Values (Assumed, please provide actual values for the specific engine)**:
+
+      - Engine rpm (Idle): 600-1000 rpm
+      - Lub oil pressure (Idle): 1-2 bar (15-30 psi)
+      - Fuel pressure (Idle): 3-6 bar (45-90 psi)
+      - Coolant pressure: 0.8-1.5 bar (12-22 psi)
+      - Lub oil temp (Operating): 80-100 °C
+      - Coolant temp (Operating): 80-95 °C
+
+      ---
+
+      **Analysis**:
+
+      {response_text}
+
+      ---
+
+      **Recommendations**:
+      1. Investigate the **Lub oil pressure** and clarify the units used. If it's high, it may indicate a blockage or issue with the pump.
+      2. Verify **Fuel pressure** units. If in psi, it's abnormally low and could affect fuel delivery.
+      3. Check **Coolant pressure**, as high values suggest issues with the cooling system.
+      4. Consider running a **diagnostic test** for both the **lubrication system** and **cooling system**.
+      """
+
+    return structured_output, None
+
+# Gradio Interface for Inputs
+inputs = [
+    gr.Slider(minimum=thresholds[feature] - 10, maximum=thresholds[feature] + 10,
+              step=0.1, label=feature, value=thresholds[feature],
+              elem_id=feature, interactive=True) if thresholds[feature] < 10 else
+    gr.Number(value=thresholds[feature], label=feature, precision=2, elem_id=feature)
+    for feature in thresholds.keys()
+]
+
+outputs = [
+    gr.Textbox(label="Inputs Summary and AI Analysis", interactive=False,
+              elem_id="result-box", lines=10,
+              placeholder="AI analysis will appear here.")
+]
+
+# Custom CSS for a clean, minimal look
+css = """
+    #result-box {
+        font-size: 16px;
+        font-weight: bold;
+        background: #f0f0f0;
+        color: black;
+        border: 2px solid #4CAF50;
+        padding: 10px;
+        border-radius: 10px;
+        box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+    }
+    #submit-button {
+        background-color: #4CAF50;
+        color: white;
+        font-weight: bold;
+        border-radius: 8px;
+        padding: 10px 20px;
+        display: block;
+        margin-top: 20px;
+        width: 200px;
+    }
+    #submit-button:hover {
+        background-color: #45a049;
+    }
+"""
+
+# Define the Gradio interface
+interface = gr.Interface(
+    fn=display_inputs,
+    inputs=inputs,
+    outputs=outputs,
+    title="Engine Health Prediction",
+    description="This tool will help you predict your engine's health status based on various parameters and threshold analysis.",
+    css=css  # Apply custom CSS
+)
+
+# Launch the Gradio interface
+interface.launch(debug=True)
